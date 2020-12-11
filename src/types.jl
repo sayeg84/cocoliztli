@@ -1,10 +1,13 @@
-using LightGraphs, Random
+using LightGraphs, Random, DelimitedFiles
+
 @enum Status::Int8 begin
     suceptible = 1
     infected = 2
     recovered = 3
     deceased = 4
+    inmune = 5
 end
+
 abstract type AbstractAgent end
 
 struct Agent <: AbstractAgent
@@ -22,7 +25,7 @@ struct Agent <: AbstractAgent
         return new(state,0,rand(),p,rand()*(1-p))
     end
     function Agent(state,agent)
-        return new(state,agent.t,agent.p_i,agent.p_i,agent.p_r)
+        return new(state,0,agent.p_i,agent.p_r,agent.p_d)
     end
     function Agent(state,t,p_i,p_r,p_d)
         return new(state,t,p_i,p_r,p_d)
@@ -44,7 +47,7 @@ mutable struct MutAgent <: AbstractAgent
         return new(state,0,rand(),p,rand()*(1-p))
     end
     function MutAgent(state,agent)
-        return new(state,agent.t,agent.p_i,agent.p_i,agent.p_r)
+        return new(state,0,agent.p_i,agent.p_r,agent.p_d)
     end
     function MutAgent(state,t,p_i,p_r,p_d)
         return new(state,t,p_i,p_r,p_d)
@@ -52,14 +55,11 @@ mutable struct MutAgent <: AbstractAgent
 end
 
 import Base
+
 function Base.copy(a::AbstractAgent)
     return typeof(a)(a)
 end
-
-Agent()
-Agent(suceptible)
-Agent(suceptible,0,1,1,1)
-
+    
 abstract type AbstractNetwork end
 
 struct Network{T<:AbstractAgent} <: AbstractNetwork
@@ -74,6 +74,20 @@ end
 function Network(T,n)
     return Network{T}(n,[T() for i in 1:n],LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
 end
+function Network(T,n,f)
+    lim = Int(ceil(n*f))
+    suc = [T(suceptible) for i in 1:lim]
+    inf = [T(infected) for i in lim+1:n]
+    return Network{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,Int(ceil(n/10)),0.5))
+end
+function Network(T,n,f,l)
+    lim = Int(ceil(n*f))
+    suc = [T(suceptible) for i in 1:lim]
+    inf = [T(infected) for i in lim+1:n]
+    return Network{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,l,0.5))
+end
+
+
 function Base.copy(N::Network)
     return Network(N.n,N.agents,N.graph)
 end
@@ -163,7 +177,7 @@ function evolve(i::Integer,N::AbstractNetwork;i_tmin = 5,r_tmin=10)
     if a.state == suceptible
         for j in LightGraphs.neighbors(N.graph,i)
             if N.agents[j].state == infected
-                if rand() < a.p_i 
+                if rand() < a.p_i*N.agents[j].p_i
                     return T(infected,a)
                 end
             end
@@ -189,7 +203,7 @@ function evolve!(i::Integer,N::Union{Network{Agent},MutNetwork{Agent}};i_tmin = 
     a = N.agents[i]
     if a.state == infected
         for j in LightGraphs.neighbors(N.graph,i)
-            if rand() < N.agents[j].p_i && N.agents[j].state == suceptible
+            if rand() < a.p_i*N.agents[j].p_i && N.agents[j].state == suceptible
                 N.agents[j] = Agent(infected,a)
             end
         end
@@ -215,7 +229,7 @@ function evolve!(i::Integer,N::Union{Network{MutAgent},MutNetwork{MutAgent}};i_t
     a.t += 1
     if a.state == infected
         for j in LightGraphs.neighbors(N.graph,i)
-            if rand() < N.agents[j].p_i && N.agents[j].state == suceptible
+            if rand() < a.p_i*N.agents[j].p_i && N.agents[j].state == suceptible
                 N.agents[j].state = infected
                 N.agents[j].t = 0
             end
@@ -234,21 +248,6 @@ function evolve!(i::Integer,N::Union{Network{MutAgent},MutNetwork{MutAgent}};i_t
         a.state = suceptible
     end
 end
-
-
-using BenchmarkTools
-N = Network(Agent,100)
-N2 = Network(MutAgent,100)
-N3 = MutNetwork(Agent,100)
-N4 = MutNetwork(MutAgent,100)
-@benchmark simpleEvolve(rand(1:10),N)
-@benchmark simpleEvolve(rand(1:10),N2)
-@benchmark simpleEvolve!(rand(1:10),N)
-@benchmark simpleEvolve!(rand(1:10),N2)
-@benchmark evolve(rand(1:10),N)
-@benchmark evolve(rand(1:10),N2)
-@benchmark evolve!(rand(1:10),N)
-@benchmark evolve!(rand(1:10),N2)
 
 function advanceParallel!(N::Network,evolveFunction::Function)
     newAgents = Array{typeof(N.agents[1]),1}(undef,N.n)
@@ -286,23 +285,8 @@ function advanceSequentialRandom!(N::Network{MutAgent},evolveFunction::Function)
         evolveFunction(i,N)
     end
 end
-@benchmark advanceParallel!(N,simpleEvolve)
-@benchmark advanceParallel!(N2,simpleEvolve)
-@benchmark advanceSequential!(N,simpleEvolve!)
-@benchmark advanceSequential!(N2,simpleEvolve!)
-@benchmark advanceSequentialRandom!(N,simpleEvolve!)
-@benchmark advanceSequentialRandom!(N2,simpleEvolve!)
 
-@benchmark advanceParallel!(N,evolve)
-@benchmark advanceParallel!(N2,evolve)
-@benchmark advanceParallel!(N3,evolve)
-@benchmark advanceParallel!(N4,evolve)
-@benchmark advanceSequential!(N,evolve!)
-@benchmark advanceSequential!(N2,evolve!)
-@benchmark advanceSequentialRandom!(N,evolve!)
-@benchmark advanceSequentialRandom!(N2,evolve!)
-
-function basicSimulation(N::Network,m::Integer,advanceFunc,evolveFunc)
+function basicSimulation(N::AbstractNetwork,m::Integer,advanceFunc,evolveFunc)
     result = Array{Status,2}(undef,m+1,N.n)
     result[1,:] = [a.state for a in N.agents]
     for i in 1:m
