@@ -1,4 +1,5 @@
 using Plots, GraphRecipes, LightGraphs, GraphIO, EzXML, DelimitedFiles, StatsBase
+
 include("types.jl")
 
 function makeAnimation(sim,G,savepath,max_frames=100)
@@ -31,11 +32,17 @@ function plotEvolution(sim)
         plot!(counts[:,j],label=labels[j],linewidth=2,alpha=0.75)
     end
 end
-path = ARGS[1]
-G = LightGraphs.loadgraph(joinpath(path,"network.graphml"),GraphIO.GraphML.GraphMLFormat())
-sim = DelimitedFiles.readdlm(joinpath(path,"simulation.csv"),',',)
-p = plot()
-plotEvolution(sim)
-ylims!(0,1)
-savefig(joinpath(path,"evolution.png"))
-#makeAnimation(sim,G,joinpath(path,"graph.png"),30)
+
+test = abspath(PROGRAM_FILE) == @__FILE__
+if test
+    path = ARGS[1]
+    G = LightGraphs.loadgraph(joinpath(path,"network.graphml"),GraphIO.GraphML.GraphMLFormat())
+    sim = DelimitedFiles.readdlm(joinpath(path,"simulation.csv"),',',)
+    p = plot()
+    plotEvolution(sim)
+    ylims!(0,1)
+    savefig(joinpath(path,"evolution.png"))
+    #makeAnimation(sim,G,joinpath(path,"graph.png"),30)    
+end
+
+
