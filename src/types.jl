@@ -5,7 +5,7 @@ using LightGraphs, Random, DelimitedFiles
     infected = 2
     recovered = 3
     deceased = 4
-    inmune = 5
+    immune = 5
 end
 
 abstract type AbstractAgent end
@@ -136,30 +136,31 @@ struct System{T<:AbstractAgent} <: AbstractSystem
     n::Int64
     agents::Array{T,1}
     contact_net::LightGraphs.SimpleGraphs.AbstractSimpleGraph
+    social_net::LightGraphs.SimpleGraphs.AbstractSimpleGraph
 end
 function System()
     n = rand(10:100)
-    return System{Agent}(n,[Agent() for i in 1:n],LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
+    return System{Agent}(n,[Agent() for i in 1:n],LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5),LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
 end
 function System(T,n)
-    return System{T}(n,[T() for i in 1:n],LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
+    return System{T}(n,[T() for i in 1:n],LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5),LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
 end
 function System(T,n,f)
     lim = Int(ceil(n*f))
     suc = [T(suceptible) for i in 1:lim]
     inf = [T(infected) for i in lim+1:n]
-    return System{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,Int(ceil(n/10)),0.5))
+    return System{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,Int(ceil(n/10)),0.5),LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
 end
-function System(T,n,f,l)
+function System(T,n::Number,f::Number,l::Number)
     lim = Int(ceil(n*f))
     suc = [T(suceptible) for i in 1:lim]
     inf = [T(infected) for i in lim+1:n]
-    return System{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,l,0.5))
+    return System{T}(n,vcat(suc,inf),LightGraphs.watts_strogatz(n,l,0.5),LightGraphs.watts_strogatz(n,Int(floor(n/4)),0.5))
 end
 
 
 function Base.copy(N::System)
-    return System(N.n,N.agents,N.contact_net)
+    return System(N.n,N.agents,N.contact_net,N.social_net)
 end
 
 mutable struct MutSystem{T<:AbstractAgent} <: AbstractSystem
@@ -180,4 +181,5 @@ end
 function Base.copy(N::MutSystem)
     return MutSystem(N.n,N.agents,N.contact_net)
 end
+
 

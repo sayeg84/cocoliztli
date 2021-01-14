@@ -9,37 +9,59 @@ parser.add_argument("--path",type=str,required=True,help="path of folder to anal
 args = parser.parse_args()
 
 def makeHist(res):
-    nclass = len(np.unique(res))
-    bins = np.arange(0.5,0.53+nclass,1)
+    nclass = 5
+    bins = np.arange(0.5,nclass + 0.53,1)
     hist = np.array([np.histogram(res[i,:],bins=bins,density=True)[0] for i in range(res.shape[0])])
     return hist
 
 print("plotting time evolution...  ", end="")
 
-fig = plt.figure(figsize=(12,4))
+
 labels=["S","I","R","D","Im"]
-sims = [x for x in os.listdir(args.path) if x[0:3]=="sim"]
+sims_dirs = [x for x in os.listdir(args.path) if x[0:3]=="sim"]
+graphs_dirs = [x for x in os.listdir(args.path) if x[0:7]=="con_net"]
 graphs = []
 results = []
-for i in range(len(sims)):
-    res = np.loadtxt(os.path.join(args.path,"simulation_{0}.csv".format(i+1)),dtype=np.int8,delimiter=",")
-    G = nx.read_graphml(os.path.join(args.path,"con_net_{0}.graphml".format(i+1)))
+if len(graphs_dirs) <= 1:
+    G = nx.read_graphml(os.path.join(args.path,"con_net.graphml"))
     G = nx.convert_node_labels_to_integers(G)
+    graphs = [G for i in sims_dirs]
+for i in range(len(sims_dirs)):
+    res = np.loadtxt(os.path.join(args.path,"simulation_{0}.csv".format(i+1)),dtype=np.int8,delimiter=",")
     results.append(res)
-    graphs.append(G)
+    if len(graphs_dirs) > 1:
+        G = nx.read_graphml(os.path.join(args.path,"con_net_{0}.graphml".format(i+1)))
+        G = nx.convert_node_labels_to_integers(G)
+        graphs.append(G)
+
 
 hists = np.array([makeHist(res) for res in results])
 results = np.array(results)
 avgs = np.mean(hists,axis=0)
 stds = np.std(hists,axis=0)
+fig,axs = plt.subplots(ncols=1,nrows=2,figsize=(12,9),sharex=True)
 for j in range(len(avgs[0])):
-    plt.plot(avgs[:,j],label=labels[j],lw=1.5,c="C{0}".format(j))
-    plt.fill_between(range(len(avgs[:,j])),avgs[:,j]+stds[:,j],avgs[:,j]-stds[:,j],facecolor="grey",alpha=0.5)
-plt.legend(loc="upper right")
-plt.xlabel("Time")
-plt.ylabel("Proportion")
-plt.ylim(0,1)
-plt.grid()
+    axs[0].plot(avgs[:,j],label=labels[j],lw=1.5,c="C{0}".format(j))
+    axs[0].fill_between(range(len(avgs[:,j])),avgs[:,j]+stds[:,j],avgs[:,j]-stds[:,j],facecolor="grey",alpha=0.5)
+axs[0].legend(loc="upper right")
+#plt.xlabel("Time")
+axs[0].set_ylabel("Proportion")
+axs[0].set_ylim(0,1)
+axs[0].grid()
+#plt.savefig(os.path.join(args.path,"evolution.png"),dpi=200)
+print("done")
+
+
+print("Plotting only infected ...",end="")
+j = 1
+axs[1].plot(avgs[:,j],label="Mean",lw=1.5)
+axs[1].fill_between(range(len(avgs[:,j])),avgs[:,j]+stds[:,j],avgs[:,j]-stds[:,j],facecolor="grey",alpha=0.5)
+for i in range(len(sims_dirs)):
+    axs[1].plot(hists[i,:,j],label="iter {0}".format(i))
+axs[1].legend(loc="upper right")
+axs[1].set_xlabel("Time")
+axs[1].set_ylabel("Proportion of infected")
+axs[1].grid()
 plt.savefig(os.path.join(args.path,"evolution.png"),dpi=200)
 print("done")
 print("calculating average distances... ",end="")
