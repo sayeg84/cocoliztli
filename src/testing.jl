@@ -20,8 +20,8 @@ const rt = parse(Int64,ARGS[7])
 
 function makeSimulation()
     # initializing agents
-    suc = [ComplexAgent(suceptible,0,x->1/10,model_p_i1,x->1/100) for i in 1:l]
-    inf = [ComplexAgent(infected,0,x->1/10,model_p_i1,x->1/100) for i in l+1:n]
+    suc = [Agent(suceptible,0,x->1/10,model_p_i1,x->1/100) for i in 1:l]
+    inf = [Agent(infected,0,x->1/10,model_p_i1,x->1/100) for i in l+1:n]
     N = System(n,vcat(suc,inf),watts_strogatz(n,parse(Int64,ARGS[3]),0.5))
     res = basicSimulation(N,parse(Int64,ARGS[4]),advanceParallel!,(i,N)->evolve(i,N,i_tmin=it,r_tmin=rt))
     return N, res
@@ -39,9 +39,9 @@ end
 writeMetaParams(joinpath(main_path,"meta_params.csv"),n,m,c)
 @btime N,res = makeSimulation()
 #=
-N2 = System(MutAgent,n)
-N3 = MutSystem(Agent,n)
-N4 = MutSystem(MutAgent,n)
+N2 = System(MutBasicAgent,n)
+N3 = MutSystem(BasicAgent,n)
+N4 = MutSystem(MutBasicAgent,n)
 @benchmark simpleEvolve(rand(1:n),N)
 @benchmark simpleEvolve(rand(1:n),N2)
 @benchmark simpleEvolve!(rand(1:n),N)

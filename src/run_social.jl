@@ -46,6 +46,10 @@ function parseArguments()
             arg_type = Float64
             default = 0.055
             help = "Probability of infection"
+        "--order"
+            arg_type = String
+            default = "Random"
+            help = "Order of vaccination"
     end
     return ArgParse.parse_args(s)
 end
@@ -67,11 +71,38 @@ end
 function gamma(x::Number)::Float64
     # parameters obtained via least square fit of experiment
     f = Distributions.Gamma(2.48,5.32)
-    return Distributions.pdf(f,x)
+    if x<=5
+        return 0
+    else
+        return Distributions.pdf(f,x)
+    end
 end
 
 function constant(x::Number)::Float64
     return parsed_args["p_i"]
+end
+
+function curvedInter(x;in_high=1,in_low=0,out_high=1,out_low=0,exp=1)
+    if (x-in_low)/(in_high-in_low) == 0
+        return out_low
+    else
+        if ((x-in_low)/(in_high-in_low)) > 0
+            return (out_low + (out_high-out_low) * ((x-in_low)/(in_high-in_low))^exp)
+        else
+            return ( out_low + (out_high-out_low) * -((((-x+in_low)/(in_high-in_low)))^(exp))) 
+        end
+    end
+end
+
+function newFear(N::System{ComplexAgent},i::Integer)
+    neigs1 = neighs(N,N.social_net,i,infected)
+    neigs2 = neighs(N,N.social_net,i,deceased)
+    if length(neigs1)>1
+        frac = length(neigs1)/LightGraphs.degree(N.social_net,i)
+        return curvedInter(x,out_high=0,out_low = 1,exp=0.5)*p_i(N.agents[i])
+    else
+        return p_i(N.agents[i])
+    end
 end
 
 #=
@@ -84,14 +115,22 @@ const rt = parsed_args["r_tmin"]
 =#
 
 const f = Int(ceil(parsed_args["nodes"]*parsed_args["sucep"]))
-const G = watts_strogatz(parsed_args["nodes"],parsed_args["links"],0.5)
 
 function makeSimulation()
     # initializing agents
-    suc = [ComplexAgent(suceptible,0,constant,x->0.4,gamma) for i in 1:f]
-    inf = [ComplexAgent(infected,0,constant,x->0.4,gamma) for i in f+1:parsed_args["nodes"]]
-    N = System(parsed_args["nodes"],Random.shuffle(vcat(suc,inf)),G,G)
-    res = vacSimulation(N,parsed_args["steps"],advanceParallel!,(i,N)->evolve(i,N,i_tmin=parsed_args["i_tmin"],r_tmin=parsed_args["r_tmin"]))
+    suc = [ComplexAgent(suceptible,0,constant,x->0.9,gamma) for i in 1:f]
+    inf = [ComplexAgent(infected,0,constant,x->0.9,gamma) for i in f+1:parsed_args["nodes"]]
+    N = System(parsed_args["nodes"],Random.shuffle(vcat(suc,inf)),watts_strogatz(parsed_args["nodes"],parsed_args["links"],0.5),watts_strogatz(parsed_args["nodes"],parsed_args["links"],0.9))
+    if parsed_args["order"]=="DegUp"
+        deg_sequence = degree(N.contact_net)
+        order = sort(1:N.n,by = x -> deg_sequence[x],rev=false)
+    elseif parsed_args["order"]=="DegDown"
+        deg_sequence = degree(N.contact_net)
+        order = sort(1:N.n,by = x -> deg_sequence[x],rev=true)
+    else
+        order = 1:N.n
+    end
+    res = vacSimulation(N,parsed_args["steps"],advanceParallel!,(i,N)->fearEvolve(i,N,i_tmin=parsed_args["i_tmin"],r_tmin=parsed_args["r_tmin"]),order=order,startDate=25)
     #res = basicSimulation(N,parsed_args["steps"],N->specialParallelAdvanceFunc!(N,i_tmin=parsed_args["i_tmin"],r_tmin=parsed_args["r_tmin"]))
     return N, res
 end
@@ -104,7 +143,8 @@ function main()
         writeAgents(joinpath(main_path,string("agents_",save_i,".csv")),N)
         writeEvolution(joinpath(main_path,string("simulation_",save_i,".csv")),res)
         if i==parsed_args["chains"]
-            writeNetworks(joinpath(main_path,string("con_net",".graphml")),N)
+            writeNetwork(joinpath(main_path,"con_net.graphml"),N.contact_net)
+            writeNetwork(joinpath(main_path,"soc_net.graphml"),N.social_net)
         end
     end
     println("Done")
