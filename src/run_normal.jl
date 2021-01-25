@@ -120,7 +120,7 @@ function main()
         save_i = lpad(i,Int(floor(log10(parsed_args["chains"])))+1,"0")
         writeAgents(joinpath(main_path,string("agents_",save_i,".csv")),N)
         writeEvolution(joinpath(main_path,string("simulation_",save_i,".csv")),res)
-        if i==parsed_args["chains"]
+        if i==1
             writeNetwork(joinpath(main_path,"con_net.graphml"),N.contact_net)
         end
     end
